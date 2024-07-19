@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project-backend
+  template:
+    metadata:
+      labels:
+        app: project-backend
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '3000'
+    spec:
+      containers:
+      - name: project-backend
+        image: xsz666/project_backend:v4
+        ports:
+        - containerPort: 3000
+        env:
+        - name: MONGO_URI
+          value: mongodb://myusername:mypassword@project-mongo:27017/userdb
+        livenessProbe:
+          failureThreshold: 3
+          tcpSocket:
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        readinessProbe:
+          failureThreshold: 3
+          tcpSocket:
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: ucloud-aliyun
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-backend
+spec:
+  selector:
+    app: project-backend
+  ports:
+  - protocol: TCP
+    port: 3000
+    targetPort: 3000
+

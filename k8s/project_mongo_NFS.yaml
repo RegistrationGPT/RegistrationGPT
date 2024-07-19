@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-mongo
+  labels:
+    app: project-mongo
+spec:
+  ports:
+    - port: 27017
+      name: mongo
+  selector:
+    app: project-mongo
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: project-mongo
+spec:
+  serviceName: "project-mongo"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project-mongo
+  template:
+    metadata:
+      labels:
+        app: project-mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:5.0.18
+          ports:
+            - containerPort: 27017
+              name: mongo
+          volumeMounts:
+            - name: datadir
+              mountPath: /data/db
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: "myusername"
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              value: "mypassword"
+          command:
+            - bash
+            - -c
+            - |
+              apt update -y && apt install telnet net-tools -y
+              touch /tmp/mongodb.log
+              mongod --bind_ip "0.0.0.0" --fork --logpath /tmp/mongodb.log
+              mongo --eval "db.getSiblingDB('userdb').createUser({
+                user: 'myusername', 
+                pwd: 'mypassword', 
+                roles: [{role: 'readWrite', db: 'userdb'}]
+              });"
+              tail -f /tmp/mongodb.log
+      volumes:
+        - name: datadir
+          persistentVolumeClaim:
+            claimName: nfs-pvc002
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv002
+  labels:
+    pv: nfs-pv002
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    path: /nfs/share
+    server: 172.31.24.179 
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc002
+  labels:
+    pv: nfs-pvc002
+spec:
+  resources:
+    requests:
+      storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  selector:
+    matchLabels:
+      pv: nfs-pv002
+

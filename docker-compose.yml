@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  project_backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000" 
+    depends_on:
+      - project_mongo
+    environment:
+      - MONGO_URI=mongodb://myusername:mypassword@project_mongo:27017/userdb
+    container_name: project_backend 
+
+  project_model:
+    build:
+      context: ./backend/models
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    depends_on:
+      - project_mongo
+    container_name: project_model 
+
+  project_mongo:
+    image: mongo:5.0.18
+    container_name: project_mongo
+    restart: always
+    ports:
+      - 27017:27017
+    command: mongod --auth --keyFile /data/mongodb.key --replSet rs0
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=myusername
+      - MONGO_INITDB_ROOT_PASSWORD=mypassword
+    volumes:
+      - ./mongo/data:/data/db
+    entrypoint:
+      - bash
+      - -c
+      - |
+        openssl rand -base64 128 > /data/mongodb.key
+        chmod 400 /data/mongodb.key
+        chown 999:999 /data/mongodb.key
+        echo 'const isInited = rs.status().ok === 1
+        if(!isInited){
+          rs.initiate({
+              _id: "rs0",
+              members: [
+                  { _id: 0, host: "project_mongo:27017" }
+              ]
+          })
+        }' > /data/initReplicaSet.js
+        # 启动MongoDB服务
+        exec docker-entrypoint.sh "$$@" &
+
+        # 等待MongoDB服务启动
+        until mongo -u myusername -p mypassword --authenticationDatabase admin --eval "print('waited for connection')" > /dev/null 2>&1; do
+          echo "Waiting for MongoDB to start..."
+          sleep 2
+        done
+
+        # 在userdb数据库中创建用户
+        mongo --eval "db.getSiblingDB('userdb').createUser({
+          user: 'myusername', 
+          pwd: 'mypassword', 
+          roles: [{role: 'readWrite', db: 'userdb'}]
+        });" -u myusername -p mypassword --authenticationDatabase admin
+
+        # 执行初始化副本集的脚本
+        mongo -u myusername -p mypassword --authenticationDatabase admin /data/initReplicaSet.js
+
+        # 等待docker-entrypoint.sh脚本执行的MongoDB服务进程
+        wait $$!
+
+  project_frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - project_backend
+      - project_model
+    container_name: project_frontend 
+
+volumes:
+  mongo-data:

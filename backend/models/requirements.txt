@@ -1,0 +1,8 @@
+Flask==2.0.1
+Flask-Cors==3.0.10
+Pillow==8.2.0
+werkzeug==2.0.3
+openai
+pymongo
+requests
+azure-cognitiveservices-vision-computervision
